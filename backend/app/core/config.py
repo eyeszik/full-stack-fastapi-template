@@ -95,6 +95,23 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
 
+    # Social Media API Configuration
+    YOUTUBE_CLIENT_SECRET: str | None = None
+    FACEBOOK_APP_SECRET: str | None = None
+    INSTAGRAM_APP_SECRET: str | None = None
+    LINKEDIN_CLIENT_SECRET: str | None = None
+    TWITTER_CLIENT_SECRET: str | None = None
+
+    # Cloud Storage Configuration (for media assets)
+    AWS_ACCESS_KEY_ID: str | None = None
+    AWS_SECRET_ACCESS_KEY: str | None = None
+    AWS_S3_BUCKET: str | None = None
+    AWS_REGION: str = "us-east-1"
+
+    # AI/ML Service Configuration (for content assistant)
+    OPENAI_API_KEY: str | None = None
+    ANTHROPIC_API_KEY: str | None = None
+
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
             message = (
