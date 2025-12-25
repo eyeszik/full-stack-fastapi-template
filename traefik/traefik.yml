@@ -1,0 +1,88 @@
+# Traefik Production Configuration
+
+global:
+  checkNewVersion: true
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: false
+
+log:
+  level: INFO
+  filePath: /logs/traefik.log
+  format: json
+
+accessLog:
+  filePath: /logs/access.log
+  format: json
+  bufferingSize: 100
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "yourdomain.com"
+            sans:
+              - "*.yourdomain.com"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: web
+    watch: true
+
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@yourdomain.com
+      storage: /acme.json
+      httpChallenge:
+        entryPoint: web
+
+# Rate limiting
+http:
+  middlewares:
+    ratelimit:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: 1s
+
+    security-headers:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+
+metrics:
+  prometheus:
+    buckets:
+      - 0.1
+      - 0.3
+      - 1.2
+      - 5.0
+    addEntryPointsLabels: true
+    addServicesLabels: true
+    entryPoint: metrics

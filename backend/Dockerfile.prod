@@ -1,0 +1,82 @@
+# Production Dockerfile for FastAPI Backend
+# Multi-stage build for optimal image size
+
+# =============================================================================
+# STAGE 1: Builder
+# =============================================================================
+FROM python:3.11-slim as builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN pip install uv
+
+# Copy dependency files
+COPY pyproject.toml ./
+COPY README.md ./
+
+# Install dependencies
+RUN uv pip install --system --no-cache .
+
+# =============================================================================
+# STAGE 2: Runtime
+# =============================================================================
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY --chown=appuser:appuser ./app /app/app
+COPY --chown=appuser:appuser ./scripts /app/scripts
+
+# Create necessary directories
+RUN mkdir -p /app/media /app/logs && \
+    chown -R appuser:appuser /app/media /app/logs
+
+# Switch to non-root user
+USER appuser
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/utils/health-check || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Run with Gunicorn for production
+CMD ["gunicorn", "app.main:app", \
+     "--workers", "4", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:8000", \
+     "--timeout", "120", \
+     "--keep-alive", "5", \
+     "--access-logfile", "/app/logs/access.log", \
+     "--error-logfile", "/app/logs/error.log", \
+     "--log-level", "info"]
