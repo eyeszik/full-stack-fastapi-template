@@ -82,10 +82,11 @@ def process_scheduled_posts(self):
 
     Runs every minute via Celery Beat.
     """
+    import asyncio
     try:
         with Session(engine) as session:
             scheduler = ContentScheduler(session)
-            results = await scheduler.process_scheduled_posts()
+            results = asyncio.run(scheduler.process_scheduled_posts())
 
             logger.info(
                 f"[CELERY] Processed {len(results)} scheduled posts",
@@ -111,6 +112,7 @@ def publish_content_variant(self, variant_id: str, immediate: bool = True):
         variant_id: UUID of content variant
         immediate: Publish now or queue for scheduled time
     """
+    import asyncio
     try:
         with Session(engine) as session:
             variant = crud.get_content_variant(session=session, variant_id=variant_id)
@@ -118,7 +120,7 @@ def publish_content_variant(self, variant_id: str, immediate: bool = True):
                 return {"error": "Variant not found"}
 
             scheduler = ContentScheduler(session)
-            result = await scheduler.schedule_variant(variant, immediate=immediate)
+            result = asyncio.run(scheduler.schedule_variant(variant, immediate=immediate))
 
             logger.info(
                 f"[CELERY] Published variant {variant_id}",
@@ -142,6 +144,7 @@ def fetch_analytics_batch(self):
 
     Runs hourly via Celery Beat.
     """
+    import asyncio
     try:
         with Session(engine) as session:
             # Get all published variants from last 30 days
@@ -159,7 +162,7 @@ def fetch_analytics_batch(self):
 
             for variant in variants:
                 try:
-                    result = await aggregator.fetch_and_store_analytics(str(variant.id))
+                    result = asyncio.run(aggregator.fetch_and_store_analytics(str(variant.id)))
                     results.append(result)
                 except Exception as e:
                     logger.warning(f"Failed to fetch analytics for {variant.id}: {e}")
@@ -186,10 +189,11 @@ def fetch_variant_analytics(self, variant_id: str):
     Args:
         variant_id: UUID of content variant
     """
+    import asyncio
     try:
         with Session(engine) as session:
             aggregator = AnalyticsAggregator(session)
-            result = await aggregator.fetch_and_store_analytics(variant_id)
+            result = asyncio.run(aggregator.fetch_and_store_analytics(variant_id))
 
             logger.info(
                 f"[CELERY] Fetched analytics for variant {variant_id}",
@@ -301,6 +305,7 @@ def generate_ai_caption(self, content_id: str, platform: str):
         content_id: UUID of content
         platform: Target platform
     """
+    import asyncio
     try:
         from app.services.ai_assistant import AIContentAssistant
 
@@ -310,12 +315,12 @@ def generate_ai_caption(self, content_id: str, platform: str):
                 return {"error": "Content not found"}
 
             assistant = AIContentAssistant(provider="openai")
-            result = await assistant.generate_caption(
+            result = asyncio.run(assistant.generate_caption(
                 content_type=content.content_type.value,
                 platform=platform,
                 topic=content.title,
                 tone="professional",
-            )
+            ))
 
             logger.info(
                 f"[CELERY] Generated AI caption for content {content_id}",

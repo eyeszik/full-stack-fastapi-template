@@ -1,7 +1,7 @@
 """Add content automation models
 
 Revision ID: a1b2c3d4e5f6
-Revises: 9c0a54914c78
+Revises: d98dd8ec85a3
 Create Date: 2025-12-21 00:00:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlmodel.sql.sqltypes
 
 # revision identifiers, used by Alembic.
 revision = 'a1b2c3d4e5f6'
-down_revision = '9c0a54914c78'
+down_revision = 'd98dd8ec85a3'
 branch_labels = None
 depends_on = None
 
