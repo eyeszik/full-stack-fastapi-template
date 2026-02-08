@@ -71,6 +71,13 @@ def setup_periodic_tasks(sender, **kwargs):
         name="backup_daily",
     )
 
+    # Analyze running A/B tests every hour
+    sender.add_periodic_task(
+        crontab(minute=30),  # Every hour at :30
+        analyze_running_ab_tests.s(),
+        name="analyze_ab_tests_hourly",
+    )
+
 
 # =============================================================================
 # CONTENT PUBLISHING TASKS
@@ -332,6 +339,113 @@ def generate_ai_caption(self, content_id: str, platform: str):
     except Exception as e:
         logger.error(f"[CELERY ERROR] AI caption generation failed: {e}")
         raise self.retry(exc=e, countdown=120)
+
+
+# =============================================================================
+# A/B TESTING TASKS
+# =============================================================================
+
+@celery_app.task(bind=True)
+def analyze_running_ab_tests(self):
+    """Analyze all running A/B tests and update results.
+
+    Runs hourly via Celery Beat. Calculates statistical significance,
+    effect sizes, and auto-declares winners when thresholds are met.
+    """
+    import asyncio
+    from sqlmodel import select
+    from app.models import ABTest, ABTestStatus
+    from app.services.ab_testing import ABTestAnalyzer
+
+    try:
+        with Session(engine) as session:
+            # Get all running A/B tests
+            stmt = select(ABTest).where(ABTest.status == ABTestStatus.RUNNING)
+            running_tests = session.exec(stmt).all()
+
+            logger.info(
+                f"[CELERY] Found {len(running_tests)} running A/B tests to analyze"
+            )
+
+            analyzer = ABTestAnalyzer(session)
+            results = []
+
+            for test in running_tests:
+                try:
+                    result = asyncio.run(analyzer.analyze_test(test.id))
+                    if result:
+                        results.append({
+                            "test_id": str(test.id),
+                            "test_name": test.name,
+                            "p_value": result.p_value,
+                            "is_significant": result.statistical_significance,
+                        })
+
+                        if result.statistical_significance:
+                            logger.info(
+                                f"[CELERY] A/B test '{test.name}' reached statistical significance!",
+                                extra={
+                                    "test_id": str(test.id),
+                                    "p_value": result.p_value,
+                                    "winner_id": str(test.winner_variant_id),
+                                }
+                            )
+                except Exception as test_error:
+                    logger.warning(
+                        f"[CELERY] Failed to analyze test {test.id}: {test_error}"
+                    )
+                    continue
+
+            return {
+                "success": True,
+                "analyzed": len(results),
+                "results": results,
+            }
+
+    except Exception as e:
+        logger.error(f"[CELERY ERROR] A/B test analysis batch failed: {e}")
+        raise self.retry(exc=e, countdown=600)  # Retry after 10 minutes
+
+
+@celery_app.task(bind=True, max_retries=3)
+def analyze_single_ab_test(self, test_id: str):
+    """Analyze a specific A/B test on-demand.
+
+    Args:
+        test_id: UUID of the A/B test to analyze
+    """
+    import asyncio
+    import uuid
+    from app.services.ab_testing import ABTestAnalyzer
+
+    try:
+        with Session(engine) as session:
+            analyzer = ABTestAnalyzer(session)
+            result = asyncio.run(analyzer.analyze_test(uuid.UUID(test_id)))
+
+            if not result:
+                return {"error": "Unable to analyze test - insufficient data"}
+
+            logger.info(
+                f"[CELERY] Analyzed A/B test {test_id}",
+                extra={
+                    "test_id": test_id,
+                    "p_value": result.p_value,
+                    "is_significant": result.statistical_significance,
+                }
+            )
+
+            return {
+                "success": True,
+                "test_id": test_id,
+                "p_value": result.p_value,
+                "statistical_significance": result.statistical_significance,
+                "effect_size": result.effect_size,
+            }
+
+    except Exception as e:
+        logger.error(f"[CELERY ERROR] Failed to analyze A/B test {test_id}: {e}")
+        raise self.retry(exc=e, countdown=300)  # Retry after 5 minutes
 
 
 # =============================================================================

@@ -54,6 +54,7 @@ class User(UserBase, table=True):
     content_templates: list["ContentTemplate"] = Relationship(back_populates="owner", cascade_delete=True)
     campaigns: list["Campaign"] = Relationship(back_populates="owner", cascade_delete=True)
     content_items: list["Content"] = Relationship(back_populates="owner", cascade_delete=True)
+    ab_tests: list["ABTest"] = Relationship(back_populates="owner", cascade_delete=True)
 
 
 # Properties to return via API, id is always required
@@ -534,6 +535,170 @@ class ContentAnalyticsPublic(ContentAnalyticsBase):
 
 class ContentAnalyticsListPublic(SQLModel):
     data: list[ContentAnalyticsPublic]
+    count: int
+
+
+# =============================================================================
+# A/B TESTING MODELS
+# =============================================================================
+
+class ABTestGoal(str, Enum):
+    ENGAGEMENT_RATE = "engagement_rate"  # likes+comments / views
+    CLICK_THROUGH_RATE = "click_through_rate"  # clicks / views
+    CONVERSION_RATE = "conversion_rate"  # conversions / views
+    REACH = "reach"  # total unique viewers
+    WATCH_TIME = "watch_time"  # total watch time in seconds
+
+
+class ABTestStatus(str, Enum):
+    DRAFT = "draft"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    ARCHIVED = "archived"
+
+
+class ABTestBase(SQLModel):
+    name: str = Field(max_length=255)
+    description: str | None = Field(default=None, max_length=1000)
+    goal: ABTestGoal
+    confidence_level: float = 0.95  # 95% confidence by default
+    min_sample_size: int = 100  # Minimum views/impressions before declaring winner
+    status: ABTestStatus = ABTestStatus.DRAFT
+
+
+class ABTestCreate(ABTestBase):
+    pass
+
+
+class ABTestUpdate(SQLModel):
+    name: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=1000)
+    status: ABTestStatus | None = None
+    winner_variant_id: uuid.UUID | None = None
+
+
+class ABTest(ABTestBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    owner_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    winner_variant_id: uuid.UUID | None = None  # Set when test completes
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: datetime | None = None
+
+    owner: User | None = Relationship(back_populates="ab_tests")
+    test_variants: list["ABTestVariant"] = Relationship(back_populates="ab_test", cascade_delete=True)
+    test_results: list["ABTestResult"] = Relationship(back_populates="ab_test", cascade_delete=True)
+
+
+class ABTestPublic(ABTestBase):
+    id: uuid.UUID
+    owner_id: uuid.UUID
+    winner_variant_id: uuid.UUID | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class ABTestsPublic(SQLModel):
+    data: list[ABTestPublic]
+    count: int
+
+
+# =============================================================================
+# A/B TEST VARIANT MODELS
+# =============================================================================
+
+class ABTestVariantBase(SQLModel):
+    variant_name: str = Field(max_length=100)  # e.g., "Variant A", "Variant B"
+    traffic_allocation: float = Field(default=0.5)  # 0.0 to 1.0, should sum to 1.0 across variants
+
+
+class ABTestVariantCreate(ABTestVariantBase):
+    ab_test_id: uuid.UUID
+    content_variant_id: uuid.UUID
+
+
+class ABTestVariantUpdate(SQLModel):
+    variant_name: str | None = Field(default=None, max_length=100)
+    traffic_allocation: float | None = None
+
+
+class ABTestVariant(ABTestVariantBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    ab_test_id: uuid.UUID = Field(
+        foreign_key="abtest.id", nullable=False, ondelete="CASCADE"
+    )
+    content_variant_id: uuid.UUID = Field(
+        foreign_key="contentvariant.id", nullable=False, ondelete="CASCADE"
+    )
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    ab_test: ABTest | None = Relationship(back_populates="test_variants")
+    content_variant: ContentVariant | None = Relationship()
+
+
+class ABTestVariantPublic(ABTestVariantBase):
+    id: uuid.UUID
+    ab_test_id: uuid.UUID
+    content_variant_id: uuid.UUID
+    created_at: datetime
+
+
+class ABTestVariantsPublic(SQLModel):
+    data: list[ABTestVariantPublic]
+    count: int
+
+
+# =============================================================================
+# A/B TEST RESULT MODELS
+# =============================================================================
+
+class ABTestResultBase(SQLModel):
+    variant_a_id: uuid.UUID
+    variant_b_id: uuid.UUID
+    variant_a_views: int = 0
+    variant_a_engagement: int = 0
+    variant_b_views: int = 0
+    variant_b_engagement: int = 0
+    p_value: float | None = None
+    statistical_significance: bool = False
+    effect_size: float | None = None  # Cohen's h for proportions
+    confidence_interval_lower: float | None = None
+    confidence_interval_upper: float | None = None
+    calculated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ABTestResultCreate(ABTestResultBase):
+    ab_test_id: uuid.UUID
+
+
+class ABTestResultUpdate(SQLModel):
+    variant_a_views: int | None = None
+    variant_a_engagement: int | None = None
+    variant_b_views: int | None = None
+    variant_b_engagement: int | None = None
+    p_value: float | None = None
+    statistical_significance: bool | None = None
+    effect_size: float | None = None
+
+
+class ABTestResult(ABTestResultBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    ab_test_id: uuid.UUID = Field(
+        foreign_key="abtest.id", nullable=False, ondelete="CASCADE"
+    )
+
+    ab_test: ABTest | None = Relationship(back_populates="test_results")
+
+
+class ABTestResultPublic(ABTestResultBase):
+    id: uuid.UUID
+    ab_test_id: uuid.UUID
+
+
+class ABTestResultsPublic(SQLModel):
+    data: list[ABTestResultPublic]
     count: int
 
 
