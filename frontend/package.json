@@ -23,7 +23,22 @@
     "react-dom": "^18.2.0",
     "react-error-boundary": "^5.0.0",
     "react-hook-form": "7.49.3",
-    "react-icons": "^5.5.0"
+    "react-icons": "^5.5.0",
+    "@fullcalendar/react": "^6.1.10",
+    "@fullcalendar/core": "^6.1.10",
+    "@fullcalendar/daygrid": "^6.1.10",
+    "@fullcalendar/timegrid": "^6.1.10",
+    "@fullcalendar/interaction": "^6.1.10",
+    "@tiptap/react": "^2.2.0",
+    "@tiptap/starter-kit": "^2.2.0",
+    "@tiptap/extension-link": "^2.2.0",
+    "@tiptap/extension-image": "^2.2.0",
+    "@tiptap/extension-placeholder": "^2.2.0",
+    "recharts": "^2.12.0",
+    "socket.io-client": "^4.7.0",
+    "react-dropzone": "^14.2.3",
+    "zustand": "^4.5.0",
+    "date-fns": "^3.3.0"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
